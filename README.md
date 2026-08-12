@@ -20,7 +20,7 @@
 
 # Data
 ## Table
-- Data, Region (Area), Signal no., wind speed, rainfall warning color, precipitation, result
+- Date, Region (Area), Signal no., wind speed, rainfall warning color, precipitation, result
 
 # Features 
 - Map in the center with a legend color code
