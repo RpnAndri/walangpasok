@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 import httpx
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 
 GMA_SEARCH_URL = "https://www.gmanetwork.com/news/search/"
@@ -52,34 +53,88 @@ def get_page(url: str) -> str:
 
     return response.text
 
-
-def find_gma_article(date: str) -> str | None:
+def get_gma_search_results(url: str) -> list[str]:
     """
-    Find the GMA Walang Pasok article for the given date.
+    Load a GMA search page and return the first 5 result URLs.
+    """
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            channel="chrome"
+        )
+
+        page = browser.new_page()
+
+        page.goto(
+            url,
+            wait_until="domcontentloaded",
+            timeout=30_000,
+        )
+
+        # Wait for Google Custom Search results
+        page.wait_for_selector(
+            ".gsc-expansionArea",
+            timeout=15_000,
+        )
+
+        results = page.locator(
+            ".gsc-expansionArea "
+            ".gsc-webResult.gsc-result"
+        )
+
+        urls = []
+
+        for i in range(
+            min(results.count(), 5)
+        ):
+            result = results.nth(i)
+
+            # Don't wait indefinitely for gs-title.
+            title = result.locator(
+                "a.gs-title"
+            ).first
+
+            if not title.is_visible(
+                timeout=5_000
+            ):
+                # print(
+                #     f"Result {i}: no visible title"
+                # )
+                continue
+
+            href = title.get_attribute(
+                "href"
+            )
+
+            # print(
+            #     f"Result {i}: {href}"
+            # )
+
+            if href:
+                urls.append(href)
+
+        browser.close()
+
+        return urls
+
+def find_gma_article(
+    date: str,
+) -> tuple[str, str] | None:
+    """
+    Search GMA for an article matching the given date.
 
     Returns:
-        The article URL if a matching article is found.
-        None otherwise.
+        (article_url, article_html)
+
+    Returns None if no matching article is found.
     """
+
 
     search_url = get_gma_search_url(date)
 
-    html = get_page(search_url)
-
-    soup = BeautifulSoup(html, "html.parser")
-    print(soup.prettify())
-
-    expansion_area = soup.find(
-        "div",
-        class_="gsc-expansionArea",
-    )
-
-    if expansion_area is None:
-        return None
-
-    results = expansion_area.find_all(
-        "div",
-        class_="gsc-webResult gsc-result",
+    result_urls = get_gma_search_results(
+        search_url
     )
 
     target_date = datetime.strptime(
@@ -93,14 +148,23 @@ def find_gma_article(date: str) -> str | None:
         f"{target_date.year}"
     )
 
-    for result in results:
+    for url in result_urls:
+        print(f"Checking article: {url}")
+        html = get_page(url)
 
-        title = result.find(
-            "a",
-            class_="gs-title",
-        )
+        soup = BeautifulSoup(html, "html.parser")
+
+        title = None
+
+        for header in soup.find_all("header"):
+            h1 = header.find("h1")
+
+            if h1 is not None:
+                title = h1
+                break
 
         if title is None:
+            print("No article title found")
             continue
 
         title_text = title.get_text(
@@ -108,51 +172,217 @@ def find_gma_article(date: str) -> str | None:
             strip=True,
         )
 
-        print(f"Checking: {title_text}")
+        print(f"Title: {title_text}")
 
         if date_text.lower() not in title_text.lower():
+            print(f"Date {date_text} not found")
             continue
 
-        href = title.get("href")
+        print("MATCH!")
 
-        if href:
-            return href
+        return (
+            str(url),
+            html,
+        )
 
     return None
 
 
-def article_contains_municipality(
-    article_url: str,
-    municipality: str,
-) -> bool:
+def scrape_suspended_municipalities(
+    article_html: str,
+) -> dict[str, list[str]]:
+    """
+    Scrape all municipalities with suspended classes
+    from a GMA Walang Pasok article.
 
-    html = get_page(article_url)
+    Returns:
+        {
+            "Batangas": [
+                "Calatagan"
+            ],
+            "Benguet": [
+                "Atok",
+                "Buguias",
+                "Kapangan"
+            ],
+            "Bulacan": [
+                "Malolos City"
+            ]
+        }
+    """
 
-    soup = BeautifulSoup(html, "html.parser")
-
-    text = soup.get_text(
-        separator=" ",
-        strip=True,
+    soup = BeautifulSoup(
+        article_html,
+        "html.parser",
     )
 
-    return municipality.lower() in text.lower()
-
-
-def wp_checker(date: str, municipality: str) -> bool:
-    """
-    Given a date and a municipality, determine if there are classes or not.
-    """
-
-    article_url = find_gma_article(date)
-
-    if article_url is None:
-        return False
-
-    return article_contains_municipality(
-        article_url,
-        municipality,
+    story_main = soup.find(
+        "div",
+        class_="story_main",
     )
 
-article = find_gma_article("2026-08-13")
+    if story_main is None:
+        return {}
 
-print(article)
+    municipalities: dict[str, list[str]] = {}
+
+    current_region: str | None = None
+
+    for element in story_main.find_all(
+        recursive=False
+    ):
+
+        # =========================================
+        # PARAGRAPH
+        # =========================================
+
+        if element.name == "p":
+
+            strong = element.find(
+                "strong",
+                recursive=True,
+            )
+
+            # -------------------------------------
+            # This is a REGION
+            # -------------------------------------
+
+            if strong is not None:
+
+                region_name = strong.get_text(
+                    " ",
+                    strip=True,
+                )
+
+                # Ignore non-region sections
+                if (
+                    region_name.lower() == "schools"
+                    or "gma news" in region_name.lower()
+                ):
+                    current_region = None
+                    continue
+
+                current_region = region_name
+
+                municipalities.setdefault(
+                    current_region,
+                    [],
+                )
+
+                continue
+
+            # -------------------------------------
+            # This may be a MUNICIPALITY
+            # -------------------------------------
+
+            if current_region is None:
+                continue
+
+            text = element.get_text(
+                " ",
+                strip=True,
+            )
+
+            if not text:
+                continue
+
+            # Municipality entries have:
+            #
+            # Municipality - grade levels
+            #
+            if " - " not in text:
+                continue
+
+            municipality = text.split(
+                " - ",
+                1,
+            )[0].strip()
+
+            if not municipality:
+                continue
+
+            municipalities[
+                current_region
+            ].append(municipality)
+
+        # =========================================
+        # UNORDERED LIST
+        # =========================================
+
+        elif element.name == "ul":
+
+            if current_region is None:
+                continue
+
+            for li in element.find_all(
+                "li",
+                recursive=False,
+            ):
+
+                text = li.get_text(
+                    " ",
+                    strip=True,
+                )
+
+                if not text:
+                    continue
+
+                # Expected:
+                #
+                # Atok - Pre-school to Senior High School
+                #
+                if " - " not in text:
+                    continue
+
+                municipality = text.split(
+                    " - ",
+                    1,
+                )[0].strip()
+
+                if not municipality:
+                    continue
+
+                municipalities[
+                    current_region
+                ].append(municipality)
+
+    return municipalities
+
+
+def wp_checker(date: str) -> dict:
+    """
+    Given a date, return all municipalities with suspended classes.
+
+    Returns:
+
+    {
+        "date": "2026-08-13",
+        "municipalities": {
+            "Atok": true,
+            "Baguio City": true
+        }
+    }
+    """
+
+    result = find_gma_article(date)
+    if result is None:
+        return {
+            "date": date,
+            "municipalities": {},
+        }
+
+    article_url, article_html = result
+
+    municipalities = scrape_suspended_municipalities(
+        article_html
+    )
+
+    return {
+        "date": date,
+        "municipalities": municipalities,
+    }
+
+result = wp_checker("2026-08-13")
+
+import json
+print(json.dumps(result, indent=4, ensure_ascii=False))
