@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 import httpx
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 
 GMA_SEARCH_URL = "https://www.gmanetwork.com/news/search/"
@@ -33,47 +33,50 @@ def get_gma_search_url(date: str) -> str:
     )
 
 
-def get_page(url: str) -> str:
-    response = httpx.get(
-        url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 "
-                "(Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 "
-                "(KHTML, like Gecko) "
-                "Chrome/131.0 Safari/537.36"
-            )
-        },
+async def get_page(url: str) -> str:
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 "
+            "(Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/131.0 Safari/537.36"
+        )
+    }
+
+    async with httpx.AsyncClient(
+        headers=headers,
         timeout=15,
         follow_redirects=True,
-    )
+    ) as client:
 
-    response.raise_for_status()
+        response = await client.get(url)
 
-    return response.text
+        response.raise_for_status()
 
-def get_gma_search_results(url: str) -> list[str]:
+        return response.text
+
+async def get_gma_search_results(url: str) -> list[str]:
     """
     Load a GMA search page and return the first 5 result URLs.
     """
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
             headless=True,
             channel="chrome"
         )
 
-        page = browser.new_page()
+        page = await browser.new_page()
 
-        page.goto(
+        await page.goto(
             url,
             wait_until="domcontentloaded",
             timeout=30_000,
         )
 
         # Wait for Google Custom Search results
-        page.wait_for_selector(
+        await page.wait_for_selector(
             ".gsc-expansionArea",
             timeout=15_000,
         )
@@ -86,7 +89,7 @@ def get_gma_search_results(url: str) -> list[str]:
         urls = []
 
         for i in range(
-            min(results.count(), 5)
+            min(await  results.count(), 5)
         ):
             result = results.nth(i)
 
@@ -103,7 +106,7 @@ def get_gma_search_results(url: str) -> list[str]:
                 # )
                 continue
 
-            href = title.get_attribute(
+            href = await title.get_attribute(
                 "href"
             )
 
@@ -114,11 +117,11 @@ def get_gma_search_results(url: str) -> list[str]:
             if href:
                 urls.append(href)
 
-        browser.close()
+        await browser.close()
 
         return urls
 
-def find_gma_article(
+async def find_gma_article(
     date: str,
 ) -> tuple[str, str] | None:
     """
@@ -133,7 +136,7 @@ def find_gma_article(
 
     search_url = get_gma_search_url(date)
 
-    result_urls = get_gma_search_results(
+    result_urls = await get_gma_search_results(
         search_url
     )
 
@@ -150,7 +153,7 @@ def find_gma_article(
 
     for url in result_urls:
         print(f"Checking article: {url}")
-        html = get_page(url)
+        html = await get_page(url)
 
         soup = BeautifulSoup(html, "html.parser")
 
@@ -349,7 +352,7 @@ def scrape_suspended_municipalities(
     return municipalities
 
 
-def wp_checker(date: str) -> dict:
+async def wp_checker(date: str) -> dict:
     """
     Given a date, return all municipalities with suspended classes.
 
@@ -364,7 +367,7 @@ def wp_checker(date: str) -> dict:
     }
     """
 
-    result = find_gma_article(date)
+    result = await find_gma_article(date)
     if result is None:
         return {
             "date": date,
@@ -382,7 +385,7 @@ def wp_checker(date: str) -> dict:
         "municipalities": municipalities,
     }
 
-result = wp_checker("2026-08-13")
+# result = wp_checker("2026-08-13")
 
-import json
-print(json.dumps(result, indent=4, ensure_ascii=False))
+# import json
+# print(json.dumps(result, indent=4, ensure_ascii=False))

@@ -1,9 +1,10 @@
 from fastapi import FastAPI
+from tools import wp_checker
+from datetime import datetime
 
 app = FastAPI()
 
-@app.get('/')
-def read_root():
-    return {
-        "message": "Hello, World!"
-    }
+@app.get("/walang-pasok/{date}")
+async def walang_pasok(date: str):
+
+    return await wp_checker(str(date))
