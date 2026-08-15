@@ -1,5 +1,85 @@
+import re
+
 from .geography import expand_location
 from .nlp import SuspensionExtraction
+
+# ==========================================================
+# Municipality normalization
+# ==========================================================
+
+MUNICIPALITY_ALIASES = {
+    # Cavite
+    "city of cavite": "Cavite City",
+    "cavite city": "Cavite City",
+
+    # Manila
+    "city of manila": "Manila",
+    "manila": "Manila",
+}
+
+def normalize_municipality_name(
+    location: str,
+) -> str:
+    """
+    Normalize municipality/city names coming from
+    GMA, Rappler deterministic scraping, and NLP.
+
+    Examples:
+
+        Lingayen (public schools only)
+            -> Lingayen
+
+        City of Cavite
+            -> Cavite City
+
+        Cavite City
+            -> Cavite City
+
+        City of Manila
+            -> Manila
+
+        Manila
+            -> Manila
+    """
+
+    name = location.strip()
+
+    # ------------------------------------------------------
+    # Remove trailing parenthetical qualifiers.
+    #
+    # Example:
+    #
+    # Lingayen (public schools only)
+    # -> Lingayen
+    #
+    # ------------------------------------------------------
+
+    name = re.sub(
+        r"\s*\([^)]*\)\s*$",
+        "",
+        name,
+    ).strip()
+
+    # ------------------------------------------------------
+    # Normalize whitespace
+    # ------------------------------------------------------
+
+    name = re.sub(
+        r"\s+",
+        " ",
+        name,
+    ).strip()
+
+    # ------------------------------------------------------
+    # Alias lookup
+    # ------------------------------------------------------
+
+    normalized_key = name.lower()
+
+    return MUNICIPALITY_ALIASES.get(
+        normalized_key,
+        name,
+    )
 
 def normalize_province(
     province: str,
@@ -99,6 +179,12 @@ def nlp_to_suspensions(
 def merge_suspension_results(
     *sources: list[dict],
 ) -> dict[str, list[str]]:
+    """
+    Merge suspension results and group municipalities
+    by province.
+
+    Municipality names are normalized before merging.
+    """
 
     merged: dict[str, list[str]] = {}
 
@@ -109,48 +195,43 @@ def merge_suspension_results(
             if result["status"] != "suspended":
                 continue
 
-            location = result["location"].strip()
-
-            province = result.get(
-                "province"
+            location = normalize_municipality_name(
+                result["location"]
             )
 
-            # =====================================
-            # NORMALIZE PROVINCE
-            # =====================================
+            province = result.get(
+                "province",
+                "Unknown",
+            )
 
-            if province:
-
-                normalized = province.strip().lower()
-
-                if normalized in {
-                    "national capital region",
-                    "ncr",
-                    "metro manila",
-                }:
-                    province = "Metro Manila"
-
-                else:
-                    province = province.strip()
-
-            else:
+            if not province:
                 province = "Unknown"
 
-            # =====================================
-            # CREATE PROVINCE GROUP
-            # =====================================
+            # ----------------------------------------------
+            # Normalize NCR naming
+            # ----------------------------------------------
+
+            if province.lower() in {
+                "ncr",
+                "national capital region",
+                "metro manila",
+            }:
+                province = "Metro Manila"
+
+            # ----------------------------------------------
+            # Create province bucket
+            # ----------------------------------------------
 
             merged.setdefault(
                 province,
                 [],
             )
 
-            # =====================================
-            # AVOID DUPLICATES
-            # =====================================
+            # ----------------------------------------------
+            # Avoid duplicates
+            # ----------------------------------------------
 
             if location not in merged[province]:
-
                 merged[province].append(
                     location
                 )
