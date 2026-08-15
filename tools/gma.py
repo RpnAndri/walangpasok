@@ -98,7 +98,7 @@ async def get_gma_search_results(url: str) -> list[str]:
                 "a.gs-title"
             ).first
 
-            if not title.is_visible(
+            if not await title.is_visible(
                 timeout=5_000
             ):
                 # print(
