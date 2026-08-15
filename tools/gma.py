@@ -191,7 +191,7 @@ async def find_gma_article(
     return None
 
 
-def scrape_suspended_municipalities(
+def gma_scrape_suspended_municipalities(
     article_html: str,
 ) -> dict[str, list[str]]:
     """
@@ -351,41 +351,3 @@ def scrape_suspended_municipalities(
 
     return municipalities
 
-
-async def wp_checker(date: str) -> dict:
-    """
-    Given a date, return all municipalities with suspended classes.
-
-    Returns:
-
-    {
-        "date": "2026-08-13",
-        "municipalities": {
-            "Atok": true,
-            "Baguio City": true
-        }
-    }
-    """
-
-    result = await find_gma_article(date)
-    if result is None:
-        return {
-            "date": date,
-            "municipalities": {},
-        }
-
-    article_url, article_html = result
-
-    municipalities = scrape_suspended_municipalities(
-        article_html
-    )
-
-    return {
-        "date": date,
-        "municipalities": municipalities,
-    }
-
-# result = wp_checker("2026-08-13")
-
-# import json
-# print(json.dumps(result, indent=4, ensure_ascii=False))

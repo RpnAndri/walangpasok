@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from tools import wp_checker
+from tools.wp_checker import wp_checker
 from datetime import datetime
 
 app = FastAPI()
