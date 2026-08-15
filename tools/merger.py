@@ -44,6 +44,13 @@ def rappler_to_suspensions(
     results = []
 
     for province, municipalities in data.items():
+        # Normalize NCR aliases
+        if province.strip().lower() in {
+            "national capital region",
+            "ncr",
+            "metro manila",
+        }:
+            province = "Metro Manila"
 
         for municipality in municipalities:
 
@@ -69,14 +76,15 @@ def nlp_to_suspensions(
         locations = expand_location(
             suspension.location,
             suspension.scope,
+            suspension.province,
         )
 
-        for location in locations:
+        for expanded in locations:
 
             results.append({
-                "location": location["location"],
+                "location": expanded["location"],
                 "scope": "municipality",
-                "province": location["province"],
+                "province": expanded["province"],
                 "status": suspension.status,
                 "source": "rappler_nlp",
                 "original_location": (
@@ -92,7 +100,7 @@ def merge_suspension_results(
     *sources: list[dict],
 ) -> dict[str, list[str]]:
 
-    grouped: dict[str, list[str]] = {}
+    merged: dict[str, list[str]] = {}
 
     for source in sources:
 
@@ -101,31 +109,50 @@ def merge_suspension_results(
             if result["status"] != "suspended":
                 continue
 
-            municipality = result["location"]
+            location = result["location"].strip()
 
             province = result.get(
                 "province"
             )
 
-            if not province:
+            # =====================================
+            # NORMALIZE PROVINCE
+            # =====================================
+
+            if province:
+
+                normalized = province.strip().lower()
+
+                if normalized in {
+                    "national capital region",
+                    "ncr",
+                    "metro manila",
+                }:
+                    province = "Metro Manila"
+
+                else:
+                    province = province.strip()
+
+            else:
                 province = "Unknown"
 
-            province = normalize_province(
-                province
-            )
+            # =====================================
+            # CREATE PROVINCE GROUP
+            # =====================================
 
-            grouped.setdefault(
+            merged.setdefault(
                 province,
                 [],
             )
 
-            if municipality not in grouped[
-                province
-            ]:
-                grouped[
-                    province
-                ].append(
-                    municipality
+            # =====================================
+            # AVOID DUPLICATES
+            # =====================================
+
+            if location not in merged[province]:
+
+                merged[province].append(
+                    location
                 )
 
-    return grouped
+    return merged

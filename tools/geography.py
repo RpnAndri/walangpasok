@@ -8,6 +8,47 @@ DATA_FILE = (
     / "philippines_geography.json"
 )
 
+def normalize_region(
+    location: str,
+) -> str:
+
+    normalized = location.strip().lower()
+
+    if normalized in {
+        "national capital region",
+        "ncr",
+        "metro manila",
+    }:
+        return "Metro Manila"
+
+    return location.strip()
+
+def normalize_province(
+    province: str | None,
+) -> str:
+
+    if not province:
+        return "Unknown"
+
+    normalized = province.strip().lower()
+
+    aliases = {
+        "national capital region": "Metro Manila",
+        "ncr": "Metro Manila",
+        "metro manila": "Metro Manila",
+    }
+
+    return aliases.get(
+        normalized,
+        province.strip(),
+    )
+
+
+def normalize_location(
+    location: str,
+) -> str:
+
+    return location.strip()
 
 def load_geography() -> dict[str, list[str]]:
     with open(
@@ -24,87 +65,102 @@ GEOGRAPHY = load_geography()
 def expand_location(
     location: str,
     scope: str,
+    province: str | None = None,
 ) -> list[dict]:
-    """
-    Expand a province/region into its municipalities.
 
-    Returns:
-        [
-            {
-                "location": "Bacoor",
-                "province": "Cavite",
-            },
-            ...
-        ]
+    location = location.strip()
 
-    For municipality/city, the province is looked up
-    from GEOGRAPHY.
-    """
-
-    # -----------------------------------------
-    # Municipality / City
-    # -----------------------------------------
+    # =========================================
+    # MUNICIPALITY / CITY
+    # =========================================
 
     if scope in (
         "municipality",
         "city",
     ):
 
-        for province, municipalities in GEOGRAPHY.items():
+        return [
+            {
+                "location": location,
+                "province": normalize_province(
+                    province
+                ),
+            }
+        ]
 
-            if location in municipalities:
-                return [{
-                    "location": location,
-                    "province": province,
-                }]
-
-        # Could not determine province
-        return [{
-            "location": location,
-            "province": "Unknown",
-        }]
-
-    # -----------------------------------------
-    # Province
-    # -----------------------------------------
+    # =========================================
+    # PROVINCE
+    # =========================================
 
     if scope == "province":
 
+        province_name = normalize_province(
+            location
+        )
+
         municipalities = GEOGRAPHY.get(
-            location,
+            province_name,
             [],
         )
 
         return [
             {
                 "location": municipality,
-                "province": location,
+                "province": province_name,
             }
             for municipality in municipalities
         ]
 
-    # -----------------------------------------
-    # Region
-    # -----------------------------------------
+    # =========================================
+    # REGION
+    # =========================================
 
     if scope == "region":
+
+        region = location.lower().strip()
+
+        if region in {
+            "national capital region",
+            "ncr",
+            "metro manila",
+        }:
+
+            municipalities = GEOGRAPHY.get(
+                "Metro Manila",
+                [],
+            )
+
+            return [
+                {
+                    "location": municipality,
+                    "province": "Metro Manila",
+                }
+                for municipality in municipalities
+            ]
+
         return []
 
-    # -----------------------------------------
-    # Nationwide
-    # -----------------------------------------
+    # =========================================
+    # NATIONWIDE
+    # =========================================
 
     if scope == "nationwide":
 
         results = []
 
-        for province, municipalities in GEOGRAPHY.items():
+        for province_name, municipalities in (
+            GEOGRAPHY.items()
+        ):
+
+            province_name = normalize_province(
+                province_name
+            )
 
             for municipality in municipalities:
 
                 results.append({
                     "location": municipality,
-                    "province": province,
+                    "province": province_name,
                 })
 
         return results
