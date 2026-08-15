@@ -164,6 +164,23 @@ async def wp_checker(
                     )
                 )
 
+                print("EXTRACTION:")
+                print(extraction)
+
+                print("EXTRACTION TYPE:")
+                print(type(extraction))
+
+                print("SUSPENSIONS:")
+                print(extraction.suspensions)
+
+                print("FIRST SUSPENSION:")
+                if extraction.suspensions:
+                    print(extraction.suspensions[0])
+
+                print("FIRST SUSPENSION TYPE:")
+                if extraction.suspensions:
+                    print(type(extraction.suspensions[0]))
+
                 rappler_nlp_results = (
                     nlp_to_suspensions(
                         extraction

@@ -1,4 +1,5 @@
 from .geography import expand_location
+from .nlp import SuspensionExtraction
 
 def normalize_province(
     province: str,
@@ -58,7 +59,7 @@ def rappler_to_suspensions(
 
 
 def nlp_to_suspensions(
-    extraction,
+    extraction: SuspensionExtraction,
 ) -> list[dict]:
 
     results = []
@@ -70,17 +71,18 @@ def nlp_to_suspensions(
             suspension.scope,
         )
 
-        for expanded in locations:
+        for location in locations:
 
             results.append({
-                "location": expanded["location"],
+                "location": location["location"],
                 "scope": "municipality",
-                "province": expanded["province"],
+                "province": location["province"],
                 "status": suspension.status,
                 "source": "rappler_nlp",
                 "original_location": (
                     suspension.location
                 ),
+                "evidence": suspension.evidence,
             })
 
     return results

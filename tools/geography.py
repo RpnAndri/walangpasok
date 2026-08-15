@@ -24,37 +24,89 @@ GEOGRAPHY = load_geography()
 def expand_location(
     location: str,
     scope: str,
-) -> list[str]:
+) -> list[dict]:
     """
     Expand a province/region into its municipalities.
 
-    For municipality/city, simply return itself.
+    Returns:
+        [
+            {
+                "location": "Bacoor",
+                "province": "Cavite",
+            },
+            ...
+        ]
+
+    For municipality/city, the province is looked up
+    from GEOGRAPHY.
     """
+
+    # -----------------------------------------
+    # Municipality / City
+    # -----------------------------------------
 
     if scope in (
         "municipality",
         "city",
     ):
-        return [location]
+
+        for province, municipalities in GEOGRAPHY.items():
+
+            if location in municipalities:
+                return [{
+                    "location": location,
+                    "province": province,
+                }]
+
+        # Could not determine province
+        return [{
+            "location": location,
+            "province": "Unknown",
+        }]
+
+    # -----------------------------------------
+    # Province
+    # -----------------------------------------
 
     if scope == "province":
-        return GEOGRAPHY.get(
+
+        municipalities = GEOGRAPHY.get(
             location,
             [],
         )
 
-    # We'll add region expansion later.
+        return [
+            {
+                "location": municipality,
+                "province": location,
+            }
+            for municipality in municipalities
+        ]
+
+    # -----------------------------------------
+    # Region
+    # -----------------------------------------
+
     if scope == "region":
         return []
 
+    # -----------------------------------------
+    # Nationwide
+    # -----------------------------------------
+
     if scope == "nationwide":
-        all_municipalities = []
 
-        for municipalities in GEOGRAPHY.values():
-            all_municipalities.extend(
-                municipalities
-            )
+        results = []
 
-        return all_municipalities
+        for province, municipalities in GEOGRAPHY.items():
+
+            for municipality in municipalities:
+
+                results.append({
+                    "location": municipality,
+                    "province": province,
+                })
+
+        return results
 
     return []
