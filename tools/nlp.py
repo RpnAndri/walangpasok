@@ -130,12 +130,6 @@ ARTICLE:
         },
     )
 
-    print("GEMINI RESPONSE TEXT:")
-    print(response.text)
-
-    print("GEMINI RESPONSE TYPE:")
-    print(type(response.text))
-
     return SuspensionExtraction.model_validate_json(
         response.text
     )

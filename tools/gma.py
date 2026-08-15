@@ -195,23 +195,40 @@ def gma_scrape_suspended_municipalities(
     article_html: str,
 ) -> dict[str, list[str]]:
     """
-    Scrape all municipalities with suspended classes
-    from a GMA Walang Pasok article.
+    Scrape municipalities from a GMA Walang Pasok article.
 
-    Returns:
-        {
-            "Batangas": [
-                "Calatagan"
-            ],
-            "Benguet": [
-                "Atok",
-                "Buguias",
-                "Kapangan"
-            ],
-            "Bulacan": [
-                "Malolos City"
-            ]
-        }
+    Supports both common GMA formats.
+
+    Format A:
+
+        <p><strong>Cavite</strong></p>
+        <ul>
+            <li>Bacoor - No face-to-face classes...</li>
+            <li>Cavite City - All Levels...</li>
+        </ul>
+
+    Format B:
+
+        <p><strong>Benguet</strong></p>
+
+        <p>Pre-school to Senior High School</p>
+        <ul>
+            <li>Atok</li>
+            <li>Kabayan</li>
+            <li>Kibungan</li>
+            <li>Tublay</li>
+        </ul>
+
+        <p>Pre-school to elementary</p>
+        <ul>
+            <li>Bakun</li>
+            <li>Bokod</li>
+            <li>Buguias</li>
+            <li>Mankayan</li>
+        </ul>
+
+    The current region remains active until another
+    <p><strong>...</strong></p> region heading appears.
     """
 
     soup = BeautifulSoup(
@@ -231,24 +248,29 @@ def gma_scrape_suspended_municipalities(
 
     current_region: str | None = None
 
-    for element in story_main.find_all(
-        recursive=False
-    ):
+    # --------------------------------------------------
+    # Process all P and UL elements in document order.
+    # --------------------------------------------------
 
-        # =========================================
+    elements = story_main.find_all(
+        ["p", "ul"]
+    )
+
+    for element in elements:
+
+        # ==================================================
         # PARAGRAPH
-        # =========================================
+        # ==================================================
 
         if element.name == "p":
 
             strong = element.find(
-                "strong",
-                recursive=True,
+                "strong"
             )
 
-            # -------------------------------------
-            # This is a REGION
-            # -------------------------------------
+            # ----------------------------------------------
+            # Region heading
+            # ----------------------------------------------
 
             if strong is not None:
 
@@ -257,31 +279,83 @@ def gma_scrape_suspended_municipalities(
                     strip=True,
                 )
 
-                # Ignore non-region sections
-                if (
-                    region_name.lower() == "schools"
-                    or "gma news" in region_name.lower()
-                ):
+                if not region_name:
+                    continue
+
+                normalized = (
+                    region_name
+                    .strip()
+                    .lower()
+                )
+
+                # Ignore unrelated sections
+                if normalized in {
+                    "schools",
+                    "school",
+                    "universities",
+                    "university",
+                }:
                     current_region = None
                     continue
 
-                current_region = region_name
+                if "gma news" in normalized:
+                    current_region = None
+                    continue
+
+                current_region = region_name.strip()
 
                 municipalities.setdefault(
                     current_region,
                     [],
                 )
 
+                print(
+                    f"GMA region detected: "
+                    f"{current_region}"
+                )
+
+            # ----------------------------------------------
+            # Plain paragraphs are things like:
+            #
+            # Pre-school to Senior High School
+            # Pre-school to elementary
+            #
+            # They do NOT change the region.
+            # ----------------------------------------------
+
+            continue
+
+        # ==================================================
+        # UNORDERED LIST
+        # ==================================================
+
+        if element.name != "ul":
+            continue
+
+        if current_region is None:
+            continue
+
+        # --------------------------------------------------
+        # Only direct <li> children.
+        # --------------------------------------------------
+
+        for li in element.find_all(
+            "li",
+            recursive=False,
+        ):
+
+            # ----------------------------------------------
+            # Don't accidentally process nested lists.
+            # ----------------------------------------------
+
+            nested_ul = li.find("ul")
+
+            if nested_ul is not None:
+                # This is a parent list item rather than
+                # an actual municipality entry.
                 continue
 
-            # -------------------------------------
-            # This may be a MUNICIPALITY
-            # -------------------------------------
-
-            if current_region is None:
-                continue
-
-            text = element.get_text(
+            text = li.get_text(
                 " ",
                 strip=True,
             )
@@ -289,65 +363,67 @@ def gma_scrape_suspended_municipalities(
             if not text:
                 continue
 
-            # Municipality entries have:
-            #
-            # Municipality - grade levels
-            #
-            if " - " not in text:
-                continue
+            municipality: str | None = None
 
-            municipality = text.split(
-                " - ",
-                1,
-            )[0].strip()
+            # ==================================================
+            # FORMAT A
+            #
+            # Bacoor - No face-to-face classes...
+            # ==================================================
+
+            match = re.match(
+                r"^\s*(.+?)\s*[-–—]\s+",
+                text,
+            )
+
+            if match:
+
+                municipality = (
+                    match.group(1)
+                    .strip()
+                )
+
+            # ==================================================
+            # FORMAT B
+            #
+            # Atok
+            # Kabayan
+            # Mankayan
+            #
+            # No suspension description after it.
+            # ==================================================
+
+            else:
+
+                municipality = text.strip()
 
             if not municipality:
                 continue
 
-            municipalities[
+            # --------------------------------------------------
+            # Avoid duplicate municipalities when the same
+            # municipality appears in multiple suspension
+            # categories.
+            # --------------------------------------------------
+
+            if municipality not in municipalities[
                 current_region
-            ].append(municipality)
-
-        # =========================================
-        # UNORDERED LIST
-        # =========================================
-
-        elif element.name == "ul":
-
-            if current_region is None:
-                continue
-
-            for li in element.find_all(
-                "li",
-                recursive=False,
-            ):
-
-                text = li.get_text(
-                    " ",
-                    strip=True,
-                )
-
-                if not text:
-                    continue
-
-                # Expected:
-                #
-                # Atok - Pre-school to Senior High School
-                #
-                if " - " not in text:
-                    continue
-
-                municipality = text.split(
-                    " - ",
-                    1,
-                )[0].strip()
-
-                if not municipality:
-                    continue
+            ]:
 
                 municipalities[
                     current_region
-                ].append(municipality)
+                ].append(
+                    municipality
+                )
+
+    # --------------------------------------------------
+    # Remove regions with no municipalities.
+    # --------------------------------------------------
+
+    municipalities = {
+        region: values
+        for region, values in municipalities.items()
+        if values
+    }
 
     return municipalities
-
