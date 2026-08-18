@@ -16,109 +16,133 @@
     >
 
     <style>
-        * {
-            box-sizing: border-box;
-        }
-
         html,
         body {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            font-family:
-                -apple-system,
-                BlinkMacSystemFont,
-                "Segoe UI",
-                sans-serif;
+            background: #000;
+            overflow: hidden;
         }
 
         #map {
             width: 100%;
             height: 100%;
+            background: #000;
+
+            transition:
+                filter 0.2s ease,
+                opacity 0.2s ease;
         }
 
-        .panel {
+        #map.loading {
+            filter: blur(6px);
+            opacity: 0.65;
+        }
+
+        /* =========================================
+           DATE CONTROLS
+           ========================================= */
+
+        #controls {
             position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+
             z-index: 1000;
 
-            top: 20px;
-            left: 20px;
-
-            background: white;
-
-            padding: 16px 18px;
-
-            border-radius: 12px;
-
-            box-shadow:
-                0 4px 20px rgba(0, 0, 0, 0.15);
-
-            min-width: 220px;
-        }
-
-        .panel h1 {
-            margin: 0 0 4px;
-            font-size: 20px;
-        }
-
-        .panel .date {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 12px;
-        }
-
-        .legend {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-        }
-
-        .legend-item {
-            display: flex;
             align-items: center;
+
             gap: 8px;
+
+            font-family: Arial, sans-serif;
+        }
+
+        #date-search {
+            display: flex;
+            gap: 8px;
+        }
+
+        #date {
+            padding: 10px 12px;
+
+            border: none;
+            border-radius: 8px;
+
+            background: white;
+            color: black;
+
             font-size: 14px;
+
+            outline: none;
         }
 
-        .legend-color {
-            width: 16px;
-            height: 16px;
-            border-radius: 4px;
+        #search-button {
+            padding: 10px 16px;
+
+            border: none;
+            border-radius: 8px;
+
+            background: white;
+            color: black;
+
+            font-size: 14px;
+            font-weight: 600;
+
+            cursor: pointer;
         }
 
-        .school {
-            background: #22c55e;
+        #search-button:hover {
+            background: #e5e5e5;
         }
 
-        .suspended {
-            background: #ef4444;
+        #display-date {
+            color: white;
+
+            font-size: 20px;
+            font-weight: 600;
+
+            text-shadow:
+                0 1px 4px rgba(0, 0, 0, 0.8);
         }
 
-        .unknown {
-            background: #d1d5db;
-        }
+        /* =========================================
+           LOADING
+           ========================================= */
 
-        .loading {
+        #loading {
             position: absolute;
-            z-index: 1001;
 
             top: 50%;
             left: 50%;
 
-            transform: translate(
-                -50%,
-                -50%
-            );
+            transform: translate(-50%, -50%);
 
-            background: white;
+            z-index: 2000;
 
-            padding: 15px 20px;
+            width: 42px;
+            height: 42px;
 
-            border-radius: 10px;
+            border: 4px solid rgba(255, 255, 255, 0.25);
+            border-top-color: white;
 
-            box-shadow:
-                0 4px 20px rgba(0, 0, 0, 0.15);
+            border-radius: 50%;
+
+            animation: spin 0.8s linear infinite;
+
+            display: none;
+        }
+
+        @keyframes spin {
+            to {
+                transform:
+                    translate(-50%, -50%)
+                    rotate(360deg);
+            }
         }
     </style>
 </head>
@@ -127,295 +151,497 @@
 
 <div id="map"></div>
 
-<div class="panel">
+<div id="controls">
 
-    <h1>Walang Pasok</h1>
+    <div id="date-search">
 
-    <div
-        id="date"
-        class="date"
-    >
-        Loading...
+        <input
+            type="date"
+            id="date"
+        >
+
+        <button
+            id="search-button"
+            type="button"
+        >
+            Search
+        </button>
+
     </div>
-
-    <div class="legend">
-
-        <div class="legend-item">
-            <div
-                class="legend-color school"
-            ></div>
-
-            May Pasok
-        </div>
-
-        <div class="legend-item">
-            <div
-                class="legend-color suspended"
-            ></div>
-
-            Walang Pasok
-        </div>
-
-        <div class="legend-item">
-            <div
-                class="legend-color unknown"
-            ></div>
-
-            No Data
-        </div>
-
+    <div id="display-date">
     </div>
 
 </div>
 
-<div
-    id="loading"
-    class="loading"
->
-    Loading map...
+<div id="loading">
 </div>
 
 
 <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-></script>
-
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+</script>
 
 <script>
 
-    // ==================================================
-    // Map
-    // ==================================================
+    // =========================================
+    // MAP
+    // =========================================
 
-    const map = L.map(
-        "map",
-        {
-            zoomControl: true,
-        }
-    );
-
-
-    // OpenStreetMap tiles
-
-    L.tileLayer(
-        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        {
-            attribution:
-                '&copy; OpenStreetMap contributors',
-        }
-    ).addTo(map);
+    const map = L.map("map", {
+        zoomControl: false,
+        attributionControl: false,
+        minZoom: 10,
+    });
 
 
-    // Center Philippines
+    // =========================================
+    // ELEMENTS
+    // =========================================
 
-    map.setView(
-        [12.8797, 121.7740],
-        6
-    );
+    const dateInput =
+        document.getElementById("date");
 
-
-    // ==================================================
-    // Colors
-    // ==================================================
-
-    function getMunicipalityColor(
-        municipality,
-        suspensions
-    ) {
-
-        if (
-            suspensions[municipality] === true
-        ) {
-            return "#ef4444";
-        }
-
-        return "#22c55e";
-    }
-
-
-    // ==================================================
-    // Polygon styling
-    // ==================================================
-
-    function styleFeature(
-        feature,
-        suspensions
-    ) {
-
-        const municipality =
-            feature.properties.name;
-
-        return {
-            fillColor:
-                getMunicipalityColor(
-                    municipality,
-                    suspensions
-                ),
-
-            weight: 1,
-
-            opacity: 1,
-
-            color: "#ffffff",
-
-            fillOpacity: 0.65,
-        };
-    }
-
-
-    // ==================================================
-    // Municipality interaction
-    // ==================================================
-
-    function onEachFeature(
-        feature,
-        layer,
-        suspensions
-    ) {
-
-        const municipality =
-            feature.properties.name;
-
-        const suspended =
-            suspensions[municipality] === true;
-
-        layer.bindPopup(
-            `
-                <strong>
-                    ${municipality}
-                </strong>
-                <br>
-                ${
-                    suspended
-                        ? "🔴 Walang Pasok"
-                        : "🟢 May Pasok"
-                }
-            `
+    const searchButton =
+        document.getElementById(
+            "search-button"
         );
 
-        layer.on({
-            mouseover: function (e) {
+    const displayDate =
+        document.getElementById(
+            "display-date"
+        );
 
-                e.target.setStyle({
-                    weight: 2,
-                    color: "#333",
-                    fillOpacity: 0.8,
-                });
+    const loading =
+        document.getElementById(
+            "loading"
+        );
 
-                e.target.bringToFront();
-            },
+    const mapElement =
+        document.getElementById("map");
 
-            mouseout: function (e) {
 
-                e.target.setStyle({
-                    weight: 1,
-                    color: "#ffffff",
-                    fillOpacity: 0.65,
-                });
-            },
-        });
+    // =========================================
+    // HELPERS
+    // =========================================
+
+    function normalizeLocation(name) {
+
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(
+                /^city of\s+/i,
+                ""
+            )
+            .replace(
+                /\s+city$/i,
+                ""
+            )
+            .replace(
+                /\s+/g,
+                " "
+            );
     }
 
 
-    // ==================================================
-    // Load data
-    // ==================================================
+    function formatDate(date) {
 
-    async function loadMap() {
+        const parts =
+            date.split("-");
+
+        if (parts.length !== 3) {
+            return date;
+        }
+
+        const year =
+            Number(parts[0]);
+
+        const month =
+            Number(parts[1]);
+
+        const day =
+            Number(parts[2]);
+
+        const parsed =
+            new Date(
+                year,
+                month - 1,
+                day
+            );
+
+        return parsed.toLocaleDateString(
+            "en-US",
+            {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+            }
+        );
+    }
+
+
+    // =========================================
+    // GLOBAL GEOJSON
+    // =========================================
+
+    let geojsonData = null;
+    let ncrLayer = null;
+
+
+    // =========================================
+    // LOAD SUSPENSIONS
+    // =========================================
+
+    async function loadSuspensions(
+        date
+    ) {
+
+        loading.style.display =
+            "block";
+
+        mapElement.classList.add(
+            "loading"
+        );
+
+        searchButton.disabled = true;
 
         try {
 
             const response =
                 await fetch(
-                    "/api/walang-pasok"
+                    `/api/suspensions?date_=${date}`
                 );
 
             if (!response.ok) {
                 throw new Error(
-                    "Failed to load suspension data"
+                    `HTTP ${response.status}`
                 );
             }
 
             const data =
                 await response.json();
 
-            document
-                .getElementById("date")
-                .textContent =
-                    data.date;
+            console.log(
+                "Suspension data:",
+                data
+            );
 
+            updateMap(
+                data.municipalities || {}
+            );
 
-            // ------------------------------------------
-            // Load Philippine municipality GeoJSON
-            // ------------------------------------------
-
-            const geoResponse =
-                await fetch(
-                    "/static/philippines-municipalities.geojson"
-                );
-
-            if (!geoResponse.ok) {
-                throw new Error(
-                    "Failed to load GeoJSON"
-                );
-            }
-
-            const geojson =
-                await geoResponse.json();
-
-
-            // ------------------------------------------
-            // Add polygons
-            // ------------------------------------------
-
-            L.geoJSON(
-                geojson,
-                {
-
-                    style: function(feature) {
-
-                        return styleFeature(
-                            feature,
-                            data.municipalities
-                        );
-                    },
-
-                    onEachFeature:
-                        function(
-                            feature,
-                            layer
-                        ) {
-
-                            onEachFeature(
-                                feature,
-                                layer,
-                                data.municipalities
-                            );
-                        },
-                }
-            ).addTo(map);
-
-
-            document
-                .getElementById("loading")
-                .remove();
-
+            displayDate.textContent =
+                formatDate(date);
 
         } catch (error) {
 
-            console.error(error);
+            console.error(
+                "Failed to load suspensions:",
+                error
+            );
 
-            document
-                .getElementById("loading")
-                .textContent =
-                    "Failed to load map.";
+            displayDate.textContent =
+                "Failed to load data";
 
+        } finally {
+
+            loading.style.display =
+                "none";
+
+            mapElement.classList.remove(
+                "loading"
+            );
+
+            searchButton.disabled =
+                false;
         }
-
     }
 
 
-    loadMap();
+    // =========================================
+    // UPDATE MAP
+    // =========================================
+
+    function updateMap(
+        municipalities
+    ) {
+
+        const suspensionLookup = {};
+
+
+        // -----------------------------------------
+        // Flatten backend response
+        // -----------------------------------------
+
+        for (
+            const province
+            in municipalities
+        ) {
+
+            const locations =
+                municipalities[
+                    province
+                ];
+
+            for (
+                const location
+                of locations
+            ) {
+
+                suspensionLookup[
+                    normalizeLocation(
+                        location
+                    )
+                ] = true;
+            }
+        }
+
+
+        // -----------------------------------------
+        // Update each NCR polygon
+        // -----------------------------------------
+
+        ncrLayer.eachLayer(
+            layer => {
+
+                const name =
+                    layer.feature
+                        ?.properties
+                        ?.name || "";
+
+                const normalized =
+                    normalizeLocation(
+                        name
+                    );
+
+                const suspended =
+                    suspensionLookup[
+                        normalized
+                    ] === true;
+
+
+                layer.setStyle({
+
+                    color: "#000000",
+
+                    weight: 1,
+
+                    fillColor:
+                        suspended
+                            ? "#ef4444"
+                            : "#22c55e",
+
+                    fillOpacity: 1,
+                });
+
+
+                // Update tooltip
+
+                layer.bindTooltip(
+                    `
+                    <strong>
+                        ${name}
+                    </strong>
+                    <br>
+                    ${
+                        suspended
+                            ? "Walang Pasok"
+                            : "May Pasok"
+                    }
+                    `,
+                    {
+                        sticky: true,
+                    }
+                );
+            }
+        );
+    }
+
+
+    // =========================================
+    // SEARCH BUTTON
+    // =========================================
+
+    searchButton.addEventListener(
+        "click",
+        () => {
+
+            const date =
+                dateInput.value;
+
+            if (!date) {
+                return;
+            }
+
+            loadSuspensions(
+                date
+            );
+        }
+    );
+
+
+    // Allow pressing Enter
+
+    dateInput.addEventListener(
+        "keydown",
+        event => {
+
+            if (
+                event.key === "Enter"
+            ) {
+
+                searchButton.click();
+            }
+        }
+    );
+
+
+    // =========================================
+    // LOAD NCR GEOJSON
+    // =========================================
+
+    fetch(
+        "/data/ncr.geojson"
+    )
+
+        .then(response => {
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `Failed to load GeoJSON: ${response.status}`
+                );
+            }
+
+            return response.json();
+        })
+
+        .then(geojson => {
+
+            geojsonData =
+                geojson;
+
+
+            // -----------------------------------------
+            // Create map layer
+            // -----------------------------------------
+
+            ncrLayer =
+                L.geoJSON(
+                    geojsonData,
+                    {
+
+                        style: {
+
+                            color: "#000000",
+
+                            weight: 1,
+
+                            fillColor:
+                                "#22c55e",
+
+                            fillOpacity: 1,
+                        },
+
+
+                        onEachFeature:
+                            function(
+                                feature,
+                                layer
+                            ) {
+
+                                const name =
+                                    feature
+                                        .properties
+                                        ?.name ||
+                                    "Unknown";
+
+                                layer.bindTooltip(
+                                    name,
+                                    {
+                                        sticky: true,
+                                    }
+                                );
+                            }
+                    }
+                )
+                .addTo(map);
+
+
+            // -----------------------------------------
+            // Center on NCR
+            // -----------------------------------------
+
+            const bounds =
+                ncrLayer.getBounds();
+
+            map.fitBounds(
+                bounds,
+                {
+                    padding: [20, 20],
+                }
+            );
+
+
+            // -----------------------------------------
+            // Prevent leaving NCR
+            // -----------------------------------------
+
+            map.setMaxBounds(
+                bounds.pad(0.05)
+            );
+
+            map.options.maxBoundsViscosity =
+                1.0;
+
+
+            // -----------------------------------------
+            // Default date
+            // -----------------------------------------
+
+            const today =
+                new Date();
+
+            const year =
+                today.getFullYear();
+
+            const month =
+                String(
+                    today.getMonth() + 1
+                ).padStart(2, "0");
+
+            const day =
+                String(
+                    today.getDate()
+                ).padStart(2, "0");
+
+            const todayString =
+                `${year}-${month}-${day}`;
+
+            dateInput.value =
+                todayString;
+
+
+            // -----------------------------------------
+            // Load today's suspensions
+            // -----------------------------------------
+
+            loadSuspensions(
+                todayString
+            );
+
+        })
+
+        .catch(error => {
+
+            console.error(
+                "Failed to initialize map:",
+                error
+            );
+
+            displayDate.textContent =
+                "Failed to load map";
+        });
 
 </script>
 

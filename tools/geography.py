@@ -5,8 +5,13 @@ from pathlib import Path
 DATA_FILE = (
     Path(__file__).parent.parent
     / "data"
-    / "philippines_geography.json"
+    / "philippines.geojson"
 )
+
+
+# =========================================================
+# NORMALIZATION
+# =========================================================
 
 def normalize_region(
     location: str,
@@ -22,6 +27,7 @@ def normalize_region(
         return "Metro Manila"
 
     return location.strip()
+
 
 def normalize_province(
     province: str | None,
@@ -50,17 +56,99 @@ def normalize_location(
 
     return location.strip()
 
+
+# =========================================================
+# LOAD GEOJSON
+# =========================================================
+
 def load_geography() -> dict[str, list[str]]:
+    """
+    Load the unified Philippines GeoJSON and build:
+
+        {
+            "Cavite": [
+                "Bacoor",
+                "Cavite City",
+                ...
+            ],
+            "Benguet": [
+                "Atok",
+                "Bakun",
+                ...
+            ],
+            "Metro Manila": [
+                "Manila",
+                "Quezon City",
+                ...
+            ]
+        }
+
+    The GeoJSON is the single source of truth.
+    """
+
     with open(
         DATA_FILE,
         "r",
         encoding="utf-8",
     ) as f:
-        return json.load(f)
+
+        data = json.load(f)
+
+    if data.get("type") != "FeatureCollection":
+        raise ValueError(
+            "Expected a GeoJSON FeatureCollection"
+        )
+
+    geography: dict[str, list[str]] = {}
+
+    for feature in data.get(
+        "features",
+        [],
+    ):
+
+        properties = feature.get(
+            "properties",
+            {},
+        )
+
+        city = properties.get(
+            "city_name"
+        )
+
+        province = properties.get(
+            "province_name"
+        )
+
+        if not city or not province:
+            continue
+
+        province = normalize_province(
+            province
+        )
+
+        city = normalize_location(
+            city
+        )
+
+        geography.setdefault(
+            province,
+            []
+        )
+
+        if city not in geography[province]:
+            geography[province].append(
+                city
+            )
+
+    return geography
 
 
 GEOGRAPHY = load_geography()
 
+
+# =========================================================
+# EXPAND LOCATION
+# =========================================================
 
 def expand_location(
     location: str,
@@ -70,9 +158,9 @@ def expand_location(
 
     location = location.strip()
 
-    # =========================================
+    # =====================================================
     # MUNICIPALITY / CITY
-    # =========================================
+    # =====================================================
 
     if scope in (
         "municipality",
@@ -88,9 +176,9 @@ def expand_location(
             }
         ]
 
-    # =========================================
+    # =====================================================
     # PROVINCE
-    # =========================================
+    # =====================================================
 
     if scope == "province":
 
@@ -111,19 +199,21 @@ def expand_location(
             for municipality in municipalities
         ]
 
-    # =========================================
+    # =====================================================
     # REGION
-    # =========================================
+    # =====================================================
 
     if scope == "region":
 
-        region = location.lower().strip()
+        normalized_region = (
+            normalize_region(location)
+        )
 
-        if region in {
-            "national capital region",
-            "ncr",
-            "metro manila",
-        }:
+        # Metro Manila / NCR
+        #
+        # In the GeoJSON, NCR municipalities have
+        # province_name = "Metro Manila".
+        if normalized_region == "Metro Manila":
 
             municipalities = GEOGRAPHY.get(
                 "Metro Manila",
@@ -138,11 +228,17 @@ def expand_location(
                 for municipality in municipalities
             ]
 
-        return []
+        # Other regions
+        #
+        # The GeoJSON contains region_name, so find
+        # all municipalities belonging to this region.
+        return expand_region(
+            normalized_region
+        )
 
-    # =========================================
+    # =====================================================
     # NATIONWIDE
-    # =========================================
+    # =====================================================
 
     if scope == "nationwide":
 
@@ -166,3 +262,75 @@ def expand_location(
         return results
 
     return []
+
+
+# =========================================================
+# REGION EXPANSION
+# =========================================================
+
+def expand_region(
+    region: str,
+) -> list[dict]:
+    """
+    Find all municipalities belonging to a region
+    directly from the GeoJSON.
+
+    This does NOT depend on philippines_geography.json.
+    """
+
+    with open(
+        DATA_FILE,
+        "r",
+        encoding="utf-8",
+    ) as f:
+
+        data = json.load(f)
+
+    normalized_target = (
+        region.strip().lower()
+    )
+
+    results = []
+
+    for feature in data.get(
+        "features",
+        [],
+    ):
+
+        properties = feature.get(
+            "properties",
+            {},
+        )
+
+        city = properties.get(
+            "city_name"
+        )
+
+        province = properties.get(
+            "province_name"
+        )
+
+        region_name = properties.get(
+            "region_name"
+        )
+
+        if not city or not province:
+            continue
+
+        if not region_name:
+            continue
+
+        if (
+            region_name.strip().lower()
+            != normalized_target
+        ):
+            continue
+
+        results.append({
+            "location": city.strip(),
+            "province": normalize_province(
+                province
+            ),
+        })
+
+    return results
