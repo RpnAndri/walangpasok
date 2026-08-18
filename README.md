@@ -22,6 +22,9 @@
 ## Table
 - Date, Region (Area), Signal no., wind speed, rainfall warning color, precipitation, result
 
+## Source
+- Precipitation (https://data.humdata.org/dataset/phl-rainfall-subnational)
+
 # Features 
 - Map in the center with a legend color code
 - hover on each municipality
