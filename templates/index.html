@@ -144,6 +144,25 @@
                     rotate(360deg);
             }
         }
+
+        /* Prevent browser selection/focus artifacts on Leaflet polygons */
+        .leaflet-interactive {
+            outline: none !important;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .leaflet-interactive:focus {
+            outline: none !important;
+        }
+
+        .leaflet-container {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .leaflet-container svg {
+            -webkit-user-select: none;
+            user-select: none;
+        }
     </style>
 </head>
 
@@ -286,6 +305,7 @@
 
     let geojsonData = null;
     let ncrLayer = null;
+    let selectedLayer = null;
 
 
     // =========================================
@@ -424,7 +444,10 @@
 
                     color: "#000000",
 
-                    weight: 1,
+                    weight:
+                        selectedLayer === layer
+                            ? 4
+                            : 1,
 
                     fillColor:
                         suspended
@@ -556,10 +579,104 @@
                                         ?.name ||
                                     "Unknown";
 
+
+                                // -----------------------------------------
+                                // Tooltip
+                                // -----------------------------------------
+
                                 layer.bindTooltip(
                                     name,
                                     {
                                         sticky: true,
+                                    }
+                                );
+
+
+                                // -----------------------------------------
+                                // Hover
+                                // -----------------------------------------
+
+                                layer.on(
+                                    "mouseover",
+                                    function() {
+
+                                        // Don't interfere with the
+                                        // selected municipality
+                                        if (
+                                            selectedLayer !== layer
+                                        ) {
+
+                                            layer.setStyle({
+                                                weight: 3,
+                                            });
+
+                                            layer.bringToFront();
+                                        }
+                                    }
+                                );
+
+
+                                layer.on(
+                                    "mouseout",
+                                    function() {
+
+                                        // Only restore normal border if
+                                        // this isn't the selected layer
+                                        if (
+                                            selectedLayer !== layer
+                                        ) {
+
+                                            layer.setStyle({
+                                                weight: 1,
+                                            });
+                                        }
+                                    }
+                                );
+
+
+                                // -----------------------------------------
+                                // Click
+                                // -----------------------------------------
+
+                                layer.on(
+                                    "click",
+                                    function(event) {
+
+                                        // Prevent browser's default
+                                        // focus/selection behavior
+                                        if (
+                                            event.originalEvent
+                                        ) {
+                                            event.originalEvent
+                                                .preventDefault();
+                                        }
+
+
+                                        // Remove previous selection
+                                        if (
+                                            selectedLayer &&
+                                            selectedLayer !== layer
+                                        ) {
+
+                                            selectedLayer.setStyle({
+                                                weight: 1,
+                                            });
+                                        }
+
+
+                                        // Select this municipality
+                                        selectedLayer =
+                                            layer;
+
+
+                                        // Highlight actual polygon
+                                        layer.setStyle({
+                                            weight: 4,
+                                        });
+
+
+                                        // Keep it above neighboring polygons
+                                        layer.bringToFront();
                                     }
                                 );
                             }
