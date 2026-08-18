@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Walang Pasok</title>
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .panel {
+            position: absolute;
+            z-index: 1000;
+
+            top: 20px;
+            left: 20px;
+
+            background: white;
+
+            padding: 16px 18px;
+
+            border-radius: 12px;
+
+            box-shadow:
+                0 4px 20px rgba(0, 0, 0, 0.15);
+
+            min-width: 220px;
+        }
+
+        .panel h1 {
+            margin: 0 0 4px;
+            font-size: 20px;
+        }
+
+        .panel .date {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .legend {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .school {
+            background: #22c55e;
+        }
+
+        .suspended {
+            background: #ef4444;
+        }
+
+        .unknown {
+            background: #d1d5db;
+        }
+
+        .loading {
+            position: absolute;
+            z-index: 1001;
+
+            top: 50%;
+            left: 50%;
+
+            transform: translate(
+                -50%,
+                -50%
+            );
+
+            background: white;
+
+            padding: 15px 20px;
+
+            border-radius: 10px;
+
+            box-shadow:
+                0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div class="panel">
+
+    <h1>Walang Pasok</h1>
+
+    <div
+        id="date"
+        class="date"
+    >
+        Loading...
+    </div>
+
+    <div class="legend">
+
+        <div class="legend-item">
+            <div
+                class="legend-color school"
+            ></div>
+
+            May Pasok
+        </div>
+
+        <div class="legend-item">
+            <div
+                class="legend-color suspended"
+            ></div>
+
+            Walang Pasok
+        </div>
+
+        <div class="legend-item">
+            <div
+                class="legend-color unknown"
+            ></div>
+
+            No Data
+        </div>
+
+    </div>
+
+</div>
+
+<div
+    id="loading"
+    class="loading"
+>
+    Loading map...
+</div>
+
+
+<script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+></script>
+
+
+<script>
+
+    // ==================================================
+    // Map
+    // ==================================================
+
+    const map = L.map(
+        "map",
+        {
+            zoomControl: true,
+        }
+    );
+
+
+    // OpenStreetMap tiles
+
+    L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+            attribution:
+                '&copy; OpenStreetMap contributors',
+        }
+    ).addTo(map);
+
+
+    // Center Philippines
+
+    map.setView(
+        [12.8797, 121.7740],
+        6
+    );
+
+
+    // ==================================================
+    // Colors
+    // ==================================================
+
+    function getMunicipalityColor(
+        municipality,
+        suspensions
+    ) {
+
+        if (
+            suspensions[municipality] === true
+        ) {
+            return "#ef4444";
+        }
+
+        return "#22c55e";
+    }
+
+
+    // ==================================================
+    // Polygon styling
+    // ==================================================
+
+    function styleFeature(
+        feature,
+        suspensions
+    ) {
+
+        const municipality =
+            feature.properties.name;
+
+        return {
+            fillColor:
+                getMunicipalityColor(
+                    municipality,
+                    suspensions
+                ),
+
+            weight: 1,
+
+            opacity: 1,
+
+            color: "#ffffff",
+
+            fillOpacity: 0.65,
+        };
+    }
+
+
+    // ==================================================
+    // Municipality interaction
+    // ==================================================
+
+    function onEachFeature(
+        feature,
+        layer,
+        suspensions
+    ) {
+
+        const municipality =
+            feature.properties.name;
+
+        const suspended =
+            suspensions[municipality] === true;
+
+        layer.bindPopup(
+            `
+                <strong>
+                    ${municipality}
+                </strong>
+                <br>
+                ${
+                    suspended
+                        ? "🔴 Walang Pasok"
+                        : "🟢 May Pasok"
+                }
+            `
+        );
+
+        layer.on({
+            mouseover: function (e) {
+
+                e.target.setStyle({
+                    weight: 2,
+                    color: "#333",
+                    fillOpacity: 0.8,
+                });
+
+                e.target.bringToFront();
+            },
+
+            mouseout: function (e) {
+
+                e.target.setStyle({
+                    weight: 1,
+                    color: "#ffffff",
+                    fillOpacity: 0.65,
+                });
+            },
+        });
+    }
+
+
+    // ==================================================
+    // Load data
+    // ==================================================
+
+    async function loadMap() {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/walang-pasok"
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Failed to load suspension data"
+                );
+            }
+
+            const data =
+                await response.json();
+
+            document
+                .getElementById("date")
+                .textContent =
+                    data.date;
+
+
+            // ------------------------------------------
+            // Load Philippine municipality GeoJSON
+            // ------------------------------------------
+
+            const geoResponse =
+                await fetch(
+                    "/static/philippines-municipalities.geojson"
+                );
+
+            if (!geoResponse.ok) {
+                throw new Error(
+                    "Failed to load GeoJSON"
+                );
+            }
+
+            const geojson =
+                await geoResponse.json();
+
+
+            // ------------------------------------------
+            // Add polygons
+            // ------------------------------------------
+
+            L.geoJSON(
+                geojson,
+                {
+
+                    style: function(feature) {
+
+                        return styleFeature(
+                            feature,
+                            data.municipalities
+                        );
+                    },
+
+                    onEachFeature:
+                        function(
+                            feature,
+                            layer
+                        ) {
+
+                            onEachFeature(
+                                feature,
+                                layer,
+                                data.municipalities
+                            );
+                        },
+                }
+            ).addTo(map);
+
+
+            document
+                .getElementById("loading")
+                .remove();
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            document
+                .getElementById("loading")
+                .textContent =
+                    "Failed to load map.";
+
+        }
+
+    }
+
+
+    loadMap();
+
+</script>
+
+</body>
+</html>

@@ -1,10 +1,35 @@
 from fastapi import FastAPI
 from tools.wp_checker import wp_checker
-from datetime import datetime
+
+BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI()
 
-@app.get("/walang-pasok/{date}")
-async def walang_pasok(date: str):
+templates = Jinja2Templates(
+    directory=str(
+        BASE_DIR / "templates"
+    )
+)
 
-    return await wp_checker(str(date))
+@app.get( "/", response_class=HTMLResponse,)
+async def index(
+    request: Request,
+):
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@app.get("/api/walang-pasok")
+async def walang_pasok(
+    date: str | None = None,
+):
+    if date is None:
+        from datetime import date as dt_date
+
+        date = dt_date.today().isoformat()
+
+    return await wp_checker(date)
