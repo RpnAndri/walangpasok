@@ -32,7 +32,7 @@
 - newsletter to send depending on the location and email address
 
 # Timeline
-- Aug 12 to 18
+- Aug 12 to 18 (DONE)
     - Initial Design (Front page)
     - Function (Data, Municipality -> Yes or No)
 - Aug 19 - 26
